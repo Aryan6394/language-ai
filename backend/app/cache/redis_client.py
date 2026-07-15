@@ -1,0 +1,1 @@
+"""Redis client setup placeholder."""

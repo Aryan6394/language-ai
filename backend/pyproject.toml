@@ -1,0 +1,5 @@
+[project]
+name = "linguaai-backend"
+version = "0.1.0"
+description = "Backend for LinguaAI"
+requires-python = ">=3.11"

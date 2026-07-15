@@ -1,0 +1,1 @@
+"""Vocabulary-related models."""
