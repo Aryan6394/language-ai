@@ -2,22 +2,23 @@
 FastAPI application entry point.
 
 Scope (per current task): only the app instance, settings-driven
-title/version, CORS middleware, and a basic health check.
+title/version, CORS middleware, a basic health check, and mounting the
+auth router (registration only — see app/router/auth.py).
 
 Deliberately excluded, per requirements:
-  - Authentication (no login/token logic)
-  - Routers (no domain routers, including the previously implemented
-    Vocabulary router, are mounted here)
-  - Database logic (no DB session wiring or queries)
-  - Any other business features
-
-Those are added in their own, separate passes as each domain is built.
+  - Authentication logic itself (that lives in app/router/auth.py,
+    app/crud/user.py, app/core/security.py — this file just mounts it)
+  - Login, JWT, current-user dependencies
+  - Database logic beyond wiring in the router
+  - Any other business features (e.g. the previously implemented
+    Vocabulary router remains unmounted)
 """
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import get_settings
+from app.routers import auth
 
 # --------------------------------------------------------------------------
 # Settings
@@ -52,6 +53,15 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# --------------------------------------------------------------------------
+# Routers
+# --------------------------------------------------------------------------
+# Only the auth router is mounted, and only its /register endpoint exists
+# right now (see app/router/auth.py). Mounting is required here — an
+# unmounted router would leave /auth/register unreachable, defeating the
+# point of this task. No other routers (e.g. vocabulary) are included.
+app.include_router(auth.router)
 
 # --------------------------------------------------------------------------
 # Health check
