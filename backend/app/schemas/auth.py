@@ -31,11 +31,6 @@ class LoginRequest(BaseModel):
 class TokenResponse(BaseModel):
     """
     Response returned after a successful login.
-
-    `token_type` is always "bearer", indicating the client should send
-    the token in an Authorization header:
-
-        Authorization: Bearer <access_token>
     """
 
     access_token: str
@@ -44,18 +39,25 @@ class TokenResponse(BaseModel):
 
 class TokenPayload(BaseModel):
     """
-    Decoded JWT payload produced by
-    `app.core.security.create_access_token()` and consumed by
-    `app.core.security.decode_access_token()`.
-
-    `sub` ("subject") stores the authenticated user's id.
-
-    `exp` stores the JWT expiration time as a Unix timestamp.
-
-    Both fields are optional because malformed or partially decoded
-    payloads may be validated before the authentication dependency
-    decides whether to reject them.
+    Decoded JWT payload.
     """
 
     sub: Optional[str] = None
     exp: Optional[int] = None
+
+
+class ChangePasswordRequest(BaseModel):
+    """
+    Request body for changing the authenticated user's password.
+    """
+
+    current_password: str
+    new_password: str
+
+
+class MessageResponse(BaseModel):
+    """
+    Generic success response.
+    """
+
+    message: str

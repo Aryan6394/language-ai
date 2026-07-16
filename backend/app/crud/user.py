@@ -114,3 +114,28 @@ def authenticate_user(
         return None
 
     return db_user
+def change_password(
+    db: Session,
+    db_user: User,
+    current_password: str,
+    new_password: str,
+) -> bool:
+    """
+    Change the authenticated user's password.
+
+    Returns:
+        True if the password was successfully changed.
+
+        False if the current password is incorrect.
+    """
+
+    if not verify_password(current_password, db_user.password_hash):
+        return False
+
+    db_user.password_hash = hash_password(new_password)
+
+    db.add(db_user)
+    db.commit()
+    db.refresh(db_user)
+
+    return True
