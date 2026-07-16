@@ -1,9 +1,9 @@
 """
 CRUD functions for the `User` model (DATABASE.md Section 1.1).
 
-Scope note: this file implements only the four functions below. No
-routers, no JWT, no login flow, no auth dependencies — those consume
-these functions later but aren't defined here.
+Scope note: this file implements the functions below. No routers, no
+JWT issuance itself, no login route — those consume `authenticate_user`
+but aren't defined here.
 """
 
 import uuid
@@ -11,7 +11,7 @@ from typing import Optional
 
 from sqlalchemy.orm import Session
 
-from app.core.security import hash_password
+from app.core.security import hash_password, verify_password
 from app.models.user import User
 from app.schemas.user import UserCreate, UserUpdate
 
@@ -20,10 +20,11 @@ def create_user(db: Session, user: UserCreate) -> User:
     """
     Create a new user from a UserCreate schema.
 
-    The plaintext password from the schema is hashed via
-    hash_password() before it ever touches the User model — the
-    plaintext value itself is never stored or passed to the DB layer.
+    The plaintext password from the schema is hashed before it is ever
+    stored. Only the resulting password hash is persisted to the
+    database.
     """
+
     db_user = User(
         email=user.email,
         password_hash=hash_password(user.password),
@@ -34,30 +35,41 @@ def create_user(db: Session, user: UserCreate) -> User:
     db.add(db_user)
     db.commit()
     db.refresh(db_user)
+
     return db_user
 
 
 def get_user_by_email(db: Session, email: str) -> Optional[User]:
-    """Look up a user by email. Returns None if no match exists."""
+    """
+    Retrieve a user by email.
+
+    Returns:
+        User if found, otherwise None.
+    """
     return db.query(User).filter(User.email == email).first()
 
 
 def get_user_by_id(db: Session, user_id: uuid.UUID) -> Optional[User]:
-    """Look up a user by primary key. Returns None if no match exists."""
-    return db.query(User).filter(User.id == user_id).first()
-
-
-def update_user(db: Session, db_user: User, user_update: UserUpdate) -> User:
     """
-    Apply a partial update to an existing User.
+    Retrieve a user by primary key.
 
-    Only fields the client actually included in the request are
-    touched: `model_dump(exclude_unset=True)` returns just the fields
-    that were explicitly set on `user_update`, so an omitted field is
-    left completely alone rather than being overwritten with its
-    schema default (None). If a field IS explicitly sent as null,
-    that's treated as an intentional clear and is applied.
+    Uses SQLAlchemy's Session.get(), which is the preferred and most
+    efficient way to load a row by its primary key.
     """
+    return db.get(User, user_id)
+
+
+def update_user(
+    db: Session,
+    db_user: User,
+    user_update: UserUpdate,
+) -> User:
+    """
+    Partially update an existing user.
+
+    Only fields explicitly supplied by the client are modified.
+    """
+
     update_data = user_update.model_dump(exclude_unset=True)
 
     for field, value in update_data.items():
@@ -66,5 +78,39 @@ def update_user(db: Session, db_user: User, user_update: UserUpdate) -> User:
     db.add(db_user)
     db.commit()
     db.refresh(db_user)
+
     return db_user
-    
+
+
+def authenticate_user(
+    db: Session,
+    email: str,
+    password: str,
+) -> Optional[User]:
+    """
+    Authenticate a user using email and password.
+
+    Returns:
+        User on successful authentication.
+
+        None if:
+        - the email does not exist
+        - the account has no password hash
+        - the password is incorrect
+
+    Returning the same result for every failure case avoids leaking
+    whether a particular email address is registered.
+    """
+
+    db_user = get_user_by_email(db, email)
+
+    if db_user is None:
+        return None
+
+    if db_user.password_hash is None:
+        return None
+
+    if not verify_password(password, db_user.password_hash):
+        return None
+
+    return db_user

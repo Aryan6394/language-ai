@@ -37,14 +37,31 @@ resistant to both GPU-cracking and side-channel attacks. Using
 the underlying default can be upgraded by a `pwdlib` version bump
 later without changing any code here.
 
-Scope note: only `hash_password` and `verify_password` are implemented,
-per current task requirements. No JWT, no auth routes, no CRUD — this
-file has no idea what a login endpoint or a token even is. It's used by
-future auth CRUD/routes (e.g. "hash this on signup," "verify this on
-login"), but doesn't call or depend on them.
+Authentication (JWT)
+---------------------
+As of the Authentication milestone, this file also issues and verifies
+JSON Web Tokens for login sessions. A JWT is how the API proves, on
+every subsequent request, "this request really is from user X" without
+re-checking a password every time: the client logs in once (via
+`verify_password` against the DB), receives a signed token, and then
+presents that token on future requests. `decode_access_token` checks
+the signature (proving *this* API issued it, using `secret_key` — see
+app/core/config.py) and the expiration (`exp` claim), so a stolen but
+expired token, or a token with a forged/altered payload, is rejected.
+
+Scope note: only hash/verify password and create/verify access token
+are implemented here, per current task requirements. No refresh tokens,
+no logout/revocation, no routes, no CRUD — this file doesn't know what
+a login endpoint is, it just provides the primitives one would use.
 """
 
+from datetime import datetime, timedelta, timezone
+from typing import Any, Optional
+
+from jose import JWTError, jwt
 from pwdlib import PasswordHash
+
+from app.core.config import get_settings
 
 # A single, module-level PasswordHash instance. `.recommended()` bundles
 # a primary hasher (used for new hashes) with any legacy hashers pwdlib
@@ -74,3 +91,71 @@ def verify_password(password: str, hashed_password: str) -> bool:
     ordinary case, not an exception.
     """
     return _password_hash.verify(password, hashed_password)
+
+
+def create_access_token(
+    subject: str,
+    expires_delta: Optional[timedelta] = None,
+) -> str:
+    """
+    Create a signed JWT access token for the given subject (the
+    authenticated user's id, as a string).
+
+    `expires_delta` lets a caller override the default expiry (rarely
+    needed); when omitted, `settings.access_token_expire_minutes` is
+    used.
+    """
+
+    settings = get_settings()
+
+    expire_at = datetime.now(timezone.utc) + (
+        expires_delta
+        or timedelta(minutes=settings.access_token_expire_minutes)
+    )
+
+    to_encode = {
+        "sub": str(subject),
+        "exp": expire_at,
+    }
+
+    return jwt.encode(
+        to_encode,
+        settings.secret_key,
+        algorithm=settings.jwt_algorithm,
+    )
+
+
+def decode_access_token(token: str) -> dict[str, Any]:
+    """
+    Verify and decode a JWT access token.
+
+    Returns:
+        The decoded JWT payload.
+
+    Raises:
+        JWTError:
+            If the token is invalid, malformed, expired,
+            or missing the required 'sub' claim.
+    """
+
+    settings = get_settings()
+
+    payload = jwt.decode(
+        token,
+        settings.secret_key,
+        algorithms=[settings.jwt_algorithm],
+    )
+
+    if "sub" not in payload:
+        raise JWTError("Missing subject")
+
+    return payload
+
+
+__all__ = [
+    "hash_password",
+    "verify_password",
+    "create_access_token",
+    "decode_access_token",
+    "JWTError",
+]

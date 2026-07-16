@@ -1,43 +1,46 @@
 """
 Authentication router.
 
-Scope note: this file implements only the registration endpoint below.
-Deliberately NOT included here, per current task requirements:
-  - Login (no /auth/login, no credential verification against
-    verify_password())
-  - JWT issuance/validation (no token fields anywhere in this file)
-  - A current-user dependency (nothing here reads or requires a token)
-
-NAMING NOTE: API.md documents this endpoint as `POST /auth/signup`. This
-task explicitly asked for `POST /register`, so that's what's implemented
-here (mounted under this router's `/auth` prefix, i.e. `/auth/register`).
-Flagging the mismatch rather than silently picking one — API.md may need
-a small update later to match, or this endpoint may need renaming to
-`/signup` once that's decided.
+Endpoints:
+  - POST /auth/register : create a new account
+  - POST /auth/login    : authenticate and receive a JWT access token
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
-from app.crud.user import create_user, get_user_by_email
+from app.core.security import create_access_token
+from app.crud.user import (
+    authenticate_user,
+    create_user,
+    get_user_by_email,
+)
 from app.db.session import get_db
+from app.schemas.auth import TokenResponse
 from app.schemas.user import UserCreate, UserResponse
 
-router = APIRouter(prefix="/auth", tags=["auth"])
+router = APIRouter(
+    prefix="/auth",
+    tags=["Authentication"],
+)
 
 
-@router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
-def register(user: UserCreate, db: Session = Depends(get_db)):
+@router.post(
+    "/register",
+    response_model=UserResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def register(
+    user: UserCreate,
+    db: Session = Depends(get_db),
+):
     """
     Register a new user.
-
-    Checks for an existing account with the same email via
-    get_user_by_email() first — if one exists, returns 400 rather than
-    silently overwriting or creating a duplicate. Otherwise delegates
-    to create_user(), which hashes the password before storing it
-    (see app/core/security.py / app/crud/user.py).
     """
+
     existing_user = get_user_by_email(db, user.email)
+
     if existing_user is not None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -45,3 +48,44 @@ def register(user: UserCreate, db: Session = Depends(get_db)):
         )
 
     return create_user(db, user)
+
+
+@router.post(
+    "/login",
+    response_model=TokenResponse,
+)
+def login(
+    form_data: OAuth2PasswordRequestForm = Depends(),
+    db: Session = Depends(get_db),
+):
+    """
+    Authenticate a user and return a JWT access token.
+
+    Swagger UI's Authorize button uses OAuth2 Password Flow, which
+    submits credentials as application/x-www-form-urlencoded.
+    OAuth2PasswordRequestForm parses those fields automatically.
+    """
+
+    user = authenticate_user(
+        db=db,
+        email=form_data.username,
+        password=form_data.password,
+    )
+
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect email or password",
+            headers={
+                "WWW-Authenticate": "Bearer",
+            },
+        )
+
+    access_token = create_access_token(
+        subject=str(user.id),
+    )
+
+    return TokenResponse(
+        access_token=access_token,
+        token_type="bearer",
+    )

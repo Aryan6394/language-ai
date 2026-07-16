@@ -18,7 +18,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import get_settings
-from app.routers import auth
+from app.routers.auth import router as auth_router
+from app.routers.users import router as user_router
 
 # --------------------------------------------------------------------------
 # Settings
@@ -61,7 +62,8 @@ app.add_middleware(
 # right now (see app/router/auth.py). Mounting is required here — an
 # unmounted router would leave /auth/register unreachable, defeating the
 # point of this task. No other routers (e.g. vocabulary) are included.
-app.include_router(auth.router)
+app.include_router(auth_router)
+app.include_router(user_router)
 
 # --------------------------------------------------------------------------
 # Health check
