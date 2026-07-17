@@ -19,8 +19,9 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import get_settings
 from app.routers.auth import router as auth_router
-from app.routers.users import router as user_router
 from app.routers.languages import router as language_router
+from app.routers.users import router as user_router
+from app.routers.vocabulary import router as vocabulary_router
 # --------------------------------------------------------------------------
 # Settings
 # --------------------------------------------------------------------------
@@ -65,6 +66,7 @@ app.add_middleware(
 app.include_router(auth_router)
 app.include_router(user_router)
 app.include_router(language_router)
+app.include_router(vocabulary_router)
 # --------------------------------------------------------------------------
 # Health check
 # --------------------------------------------------------------------------
