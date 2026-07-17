@@ -2,11 +2,28 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.crud.user import change_password, update_user
+from app.crud.user_language import (
+    create_user_language,
+    get_language_by_id,
+    get_user_language,
+    get_user_languages,
+)
 from app.db.session import get_db
 from app.dependencies import get_current_user
 from app.models.user import User
-from app.schemas.auth import ChangePasswordRequest, MessageResponse
-from app.schemas.user import UserResponse, UserUpdate
+from app.schemas.auth import (
+    ChangePasswordRequest,
+    MessageResponse,
+)
+from app.schemas.user import (
+    UserResponse,
+    UserUpdate,
+)
+from app.schemas.user_language import (
+    UserLanguageCreate,
+    UserLanguageDetail,
+    UserLanguageResponse,
+)
 
 router = APIRouter(
     prefix="/users",
@@ -78,4 +95,68 @@ def change_current_user_password(
 
     return MessageResponse(
         message="Password updated successfully",
+    )
+
+
+@router.post(
+    "/me/languages",
+    response_model=UserLanguageResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Enroll in a language",
+)
+def enroll_language(
+    language_data: UserLanguageCreate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> UserLanguageResponse:
+    """
+    Enroll the authenticated user in a language.
+    """
+
+    language = get_language_by_id(
+        db=db,
+        language_id=language_data.language_id,
+    )
+
+    if language is None or not language.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Language not found",
+        )
+
+    existing = get_user_language(
+        db=db,
+        user_id=current_user.id,
+        language_id=language_data.language_id,
+    )
+
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Already enrolled in this language",
+        )
+
+    return create_user_language(
+        db=db,
+        user=current_user,
+        language_data=language_data,
+    )
+
+
+@router.get(
+    "/me/languages",
+    response_model=list[UserLanguageDetail],
+    summary="Get enrolled languages",
+)
+def get_my_languages(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> list[UserLanguageDetail]:
+    """
+    Return all languages the authenticated user is enrolled in.
+    """
+
+    return get_user_languages(
+        db=db,
+        user_id=current_user.id,
     )

@@ -24,7 +24,7 @@ from sqlalchemy import Boolean, Column, DateTime, Enum, ForeignKey, String, func
 from sqlalchemy.dialects.postgresql import UUID
 
 from app.db.base import Base
-
+from sqlalchemy.orm import relationship
 
 class AccountStatus(str, enum.Enum):
     """Mirrors DATABASE.md's `account_status` enum (active, deleted, suspended)."""
@@ -86,9 +86,18 @@ class User(Base):
     # accurate regardless of what the client sends.
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
-    # Last time the user did anything active in the app. DATABASE.md
+        # Last time the user did anything active in the app. DATABASE.md
     # notes this "drives streak calculation" — see the open design
     # question in the project audit about whether streaks are global
     # or per-language; this column exists either way as the raw
     # last-activity signal.
-    last_active_at = Column(DateTime(timezone=True), nullable=True)
+    last_active_at = Column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+    # Relationships
+    languages = relationship(
+        "UserLanguage",
+        back_populates="user",
+    )

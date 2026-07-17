@@ -4,14 +4,6 @@ SQLAlchemy models for the Languages domain (DATABASE.md, Section 2):
                       platform supports (Section 2.1)
   - user_languages  : join table of which languages a user is actively
                       learning (Section 2.2)
-
-Milestone scope note: this file implements only the two ORM models
-below. Deliberately NOT included here, per current task requirements:
-  - Pydantic schemas
-  - CRUD functions
-  - Routers/endpoints
-  - `relationship()` declarations — plain FK columns only, since nothing
-    yet needs to traverse these relationships in code.
 """
 
 import enum
@@ -28,6 +20,7 @@ from sqlalchemy import (
     func,
 )
 from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import relationship
 
 from app.db.base import Base
 
@@ -35,21 +28,19 @@ from app.db.base import Base
 class Language(Base):
     """
     Master reference list of every language the platform supports.
-
-    DATABASE.md Section 2.1.
     """
 
     __tablename__ = "languages"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
 
-    # ISO 639-1 code (e.g. "en", "hi", "ja")
+    # ISO 639-1 code (e.g. en, hi, ja)
     code = Column(String(10), unique=True, nullable=False, index=True)
 
     # English/display name
     name = Column(String(100), nullable=False)
 
-    # Native language name (e.g. 日本語, हिन्दी)
+    # Native language name
     native_name = Column(String(100), nullable=False)
 
     # Can users learn this language?
@@ -58,12 +49,18 @@ class Language(Base):
     # Is the application translated into this language?
     is_ui_supported = Column(Boolean, nullable=False, default=False)
 
-    # Admin soft-delete / enable-disable flag.
+    # Admin enable/disable flag
     is_active = Column(Boolean, nullable=False, default=True)
+
+    # Relationships
+    user_languages = relationship(
+        "UserLanguage",
+        back_populates="language",
+    )
 
 
 class UserLanguageLevel(str, enum.Enum):
-    """Mirrors DATABASE.md's user_languages.level enum."""
+    """Learning level."""
 
     beginner = "beginner"
     intermediate = "intermediate"
@@ -71,7 +68,7 @@ class UserLanguageLevel(str, enum.Enum):
 
 
 class UserLanguageStatus(str, enum.Enum):
-    """Mirrors DATABASE.md's user_languages.status enum."""
+    """Learning status."""
 
     active = "active"
     paused = "paused"
@@ -81,8 +78,6 @@ class UserLanguageStatus(str, enum.Enum):
 class UserLanguage(Base):
     """
     Join table recording which languages a user is learning.
-
-    DATABASE.md Section 2.2.
     """
 
     __tablename__ = "user_languages"
@@ -131,4 +126,18 @@ class UserLanguage(Base):
     )
 
     # e.g. A1, A2, B1...
-    cefr_estimate = Column(String(10), nullable=True)
+    cefr_estimate = Column(
+        String(10),
+        nullable=True,
+    )
+
+    # Relationships
+    language = relationship(
+        "Language",
+        back_populates="user_languages",
+    )
+
+    user = relationship(
+        "User",
+        back_populates="languages",
+    )
