@@ -2,19 +2,23 @@
 CRUD functions for the Language model.
 """
 
-from sqlalchemy.orm import Session
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.language import Language
 
 
-def get_languages(db: Session) -> list[Language]:
+async def get_languages(
+    db: AsyncSession,
+) -> list[Language]:
     """
     Return all active languages ordered alphabetically.
     """
 
-    return (
-        db.query(Language)
-        .filter(Language.is_active.is_(True))
+    result = await db.execute(
+        select(Language)
+        .where(Language.is_active.is_(True))
         .order_by(Language.name)
-        .all()
     )
+
+    return result.scalars().all()

@@ -1,9 +1,7 @@
-"""
-Application service layer.
+"""Application service layer."""
 
-This package contains business logic that sits between the
-Router and CRUD layers.
+from .dictionary_service import DictionaryService
 
-Architecture:
-    Router → Service → CRUD → Database
-"""
+__all__ = [
+    "DictionaryService",
+]
