@@ -25,7 +25,7 @@ from app.models.user import User
 from app.providers.base import AIProvider
 from app.providers.factory import ProviderFactory
 from app.schemas.auth import TokenPayload
-from app.services import DictionaryService
+from app.services.dictionary_service import DictionaryService
 
 
 # --------------------------------------------------------------------------

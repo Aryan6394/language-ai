@@ -9,14 +9,16 @@ but aren't defined here.
 import uuid
 from typing import Optional
 
-from sqlalchemy.orm import Session
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import hash_password, verify_password
 from app.models.user import User
 from app.schemas.user import UserCreate, UserUpdate
 
 
-def create_user(db: Session, user: UserCreate) -> User:
+
+async def create_user(db: AsyncSession, user: UserCreate) -> User:
     """
     Create a new user from a UserCreate schema.
 
@@ -33,34 +35,38 @@ def create_user(db: Session, user: UserCreate) -> User:
     )
 
     db.add(db_user)
-    db.commit()
-    db.refresh(db_user)
+    await db.commit()
+    await db.refresh(db_user)
 
     return db_user
 
 
-def get_user_by_email(db: Session, email: str) -> Optional[User]:
+async def get_user_by_email(db: AsyncSession, email: str) -> Optional[User]:
     """
     Retrieve a user by email.
 
     Returns:
         User if found, otherwise None.
     """
-    return db.query(User).filter(User.email == email).first()
+    stmt = select(User).where(User.email == email)
+    result = await db.execute(stmt)
+    return result.scalar_one_or_none()
 
 
-def get_user_by_id(db: Session, user_id: uuid.UUID) -> Optional[User]:
+async def get_user_by_id(db: AsyncSession, user_id: uuid.UUID) -> Optional[User]:
     """
     Retrieve a user by primary key.
 
     Uses SQLAlchemy's Session.get(), which is the preferred and most
     efficient way to load a row by its primary key.
     """
-    return db.get(User, user_id)
+    stmt = select(User).where(User.id == user_id)
+    result = await db.execute(stmt)
+    return result.scalar_one_or_none()
 
 
-def update_user(
-    db: Session,
+async def update_user(
+    db: AsyncSession,
     db_user: User,
     user_update: UserUpdate,
 ) -> User:
@@ -76,14 +82,14 @@ def update_user(
         setattr(db_user, field, value)
 
     db.add(db_user)
-    db.commit()
-    db.refresh(db_user)
+    await db.commit()
+    await db.refresh(db_user)
 
     return db_user
 
 
-def authenticate_user(
-    db: Session,
+async def authenticate_user(
+    db: AsyncSession,
     email: str,
     password: str,
 ) -> Optional[User]:
@@ -102,7 +108,7 @@ def authenticate_user(
     whether a particular email address is registered.
     """
 
-    db_user = get_user_by_email(db, email)
+    db_user =await get_user_by_email(db, email)
 
     if db_user is None:
         return None
@@ -114,8 +120,9 @@ def authenticate_user(
         return None
 
     return db_user
-def change_password(
-    db: Session,
+
+async def change_password(
+    db: AsyncSession,
     db_user: User,
     current_password: str,
     new_password: str,
@@ -135,7 +142,7 @@ def change_password(
     db_user.password_hash = hash_password(new_password)
 
     db.add(db_user)
-    db.commit()
-    db.refresh(db_user)
+    await db.commit()
+    await db.refresh(db_user)
 
     return True

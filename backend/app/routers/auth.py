@@ -1,24 +1,20 @@
 """
-Authentication router.
-
-Endpoints:
-  - POST /auth/register : create a new account
-  - POST /auth/login    : authenticate and receive a JWT access token
+Authentication API routes.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordRequestForm
-from sqlalchemy.orm import Session
+from typing import Annotated
 
-from app.core.security import create_access_token
-from app.crud.user import (
-    authenticate_user,
-    create_user,
-    get_user_by_email,
-)
-from app.db.session import get_db
-from app.schemas.auth import TokenResponse
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.db.session import get_async_db
+from app.schemas.auth import LoginRequest, TokenResponse
 from app.schemas.user import UserCreate, UserResponse
+from app.services.auth_service import (
+    AuthService,
+    InvalidCredentialsError,
+    UserAlreadyExistsError,
+)
 
 router = APIRouter(
     prefix="/auth",
@@ -31,61 +27,46 @@ router = APIRouter(
     response_model=UserResponse,
     status_code=status.HTTP_201_CREATED,
 )
-def register(
+async def register(
     user: UserCreate,
-    db: Session = Depends(get_db),
-):
+    db: Annotated[AsyncSession, Depends(get_async_db)],
+) -> UserResponse:
     """
     Register a new user.
     """
-
-    existing_user = get_user_by_email(db, user.email)
-
-    if existing_user is not None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="A user with this email already exists",
+    try:
+        return await AuthService.register_user(
+            db,
+            user,
         )
 
-    return create_user(db, user)
+    except UserAlreadyExistsError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
 
 
 @router.post(
     "/login",
     response_model=TokenResponse,
 )
-def login(
-    form_data: OAuth2PasswordRequestForm = Depends(),
-    db: Session = Depends(get_db),
-):
+async def login(
+    credentials: LoginRequest,
+    db: Annotated[AsyncSession, Depends(get_async_db)],
+) -> TokenResponse:
     """
     Authenticate a user and return a JWT access token.
-
-    Swagger UI's Authorize button uses OAuth2 Password Flow, which
-    submits credentials as application/x-www-form-urlencoded.
-    OAuth2PasswordRequestForm parses those fields automatically.
     """
-
-    user = authenticate_user(
-        db=db,
-        email=form_data.username,
-        password=form_data.password,
-    )
-
-    if user is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect email or password",
-            headers={
-                "WWW-Authenticate": "Bearer",
-            },
+    try:
+        return await AuthService.authenticate(
+            db,
+            credentials,
         )
 
-    access_token = create_access_token(
-        subject=str(user.id),
-    )
-
-    return TokenResponse(
-        access_token=access_token,
-        token_type="bearer",
-    )
+    except InvalidCredentialsError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=str(exc),
+            headers={"WWW-Authenticate": "Bearer"},
+        ) from exc

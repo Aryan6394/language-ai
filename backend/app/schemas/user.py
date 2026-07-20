@@ -1,17 +1,9 @@
 """
 Pydantic schemas for the `User` model (DATABASE.md, Section 1.1).
 
-Milestone 2 (Authentication) scope note: this file implements only
-request/response schemas. Deliberately NOT included here:
-  - CRUD functions
-  - Routers/endpoints
-  - Password hashing (UserCreate/UserLogin carry a plain `password`
-    field; turning that into `password_hash` happens in a future
-    app/core/security.py + CRUD layer, not here)
-  - JWT issuance/validation
-
-NOTE:
-`EmailStr` requires the `email-validator` package.
+This module contains only request and response schemas for the User model.
+Business logic belongs in services, persistence belongs in CRUD, and HTTP
+handling belongs in routers.
 """
 
 import uuid
@@ -65,5 +57,9 @@ class UserUpdate(BaseModel):
     Request schema for updating user profile information.
     """
 
-    display_name: Optional[str] = Field(None, min_length=1, max_length=100)
+    display_name: Optional[str] = Field(
+        default=None,
+        min_length=1,
+        max_length=100,
+    )
     native_language_id: Optional[uuid.UUID] = None
