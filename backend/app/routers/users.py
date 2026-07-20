@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.crud.user import change_password, update_user
 from app.crud.user_language import (
@@ -8,7 +8,7 @@ from app.crud.user_language import (
     get_user_language,
     get_user_languages,
 )
-from app.db.session import get_db
+from app.db.session import get_async_db
 from app.dependencies import get_current_user
 from app.models.user import User
 from app.schemas.auth import (
@@ -36,7 +36,7 @@ router = APIRouter(
     response_model=UserResponse,
     summary="Get current user",
 )
-def get_current_user_profile(
+async def get_current_user_profile(
     current_user: User = Depends(get_current_user),
 ) -> UserResponse:
     """
@@ -50,16 +50,16 @@ def get_current_user_profile(
     response_model=UserResponse,
     summary="Update current user",
 )
-def update_current_user_profile(
+async def update_current_user_profile(
     user_update: UserUpdate,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ) -> UserResponse:
     """
     Update the authenticated user's profile.
     """
 
-    return update_user(
+    return await update_user(
         db=db,
         db_user=current_user,
         user_update=user_update,
@@ -71,16 +71,16 @@ def update_current_user_profile(
     response_model=MessageResponse,
     summary="Change current user's password",
 )
-def change_current_user_password(
+async def change_current_user_password(
     password_data: ChangePasswordRequest,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ) -> MessageResponse:
     """
     Change the authenticated user's password.
     """
 
-    success = change_password(
+    success = await change_password(
         db=db,
         db_user=current_user,
         current_password=password_data.current_password,
@@ -97,7 +97,6 @@ def change_current_user_password(
         message="Password updated successfully",
     )
 
-
 @router.post(
     "/me/languages",
     response_model=UserLanguageResponse,
@@ -107,7 +106,7 @@ def change_current_user_password(
 def enroll_language(
     language_data: UserLanguageCreate,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ) -> UserLanguageResponse:
     """
     Enroll the authenticated user in a language.
@@ -150,7 +149,7 @@ def enroll_language(
 )
 def get_my_languages(
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_async_db),
 ) -> list[UserLanguageDetail]:
     """
     Return all languages the authenticated user is enrolled in.
