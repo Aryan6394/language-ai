@@ -1,15 +1,14 @@
 """
 Declarative base for all SQLAlchemy models.
 
-Every model file (e.g. app/models/user.py, app/models/vocabulary.py)
-imports `Base` from here and registers itself against the same MetaData
-object, so that Base.metadata.create_all(engine) / Alembic autogenerate
-can see all tables across every domain in DATABASE.md.
-
-No model classes are defined in this file — it only provides the base
-class to inherit from.
+Every model imports `Base` from here so they share the same metadata.
+Alembic uses this metadata to discover and generate database migrations.
 """
 
-from sqlalchemy.orm import declarative_base
+from sqlalchemy.orm import DeclarativeBase
 
-Base = declarative_base()
+
+class Base(DeclarativeBase):
+    """Base class for all SQLAlchemy ORM models."""
+
+    pass

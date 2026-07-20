@@ -8,6 +8,7 @@ New authentication-aware routes should instead depend on
 `get_current_user`.
 """
 
+import logging
 import uuid
 
 from fastapi import Depends, Header, HTTPException, Query, status
@@ -16,11 +17,15 @@ from jose import JWTError
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.core.security import decode_access_token
 from app.crud.user import get_user_by_id
 from app.db.session import get_db
 from app.models.user import User
+from app.providers.base import AIProvider
+from app.providers.factory import ProviderFactory
 from app.schemas.auth import TokenPayload
+from app.services import DictionaryService
 
 
 # --------------------------------------------------------------------------
@@ -114,3 +119,35 @@ def get_current_user(
         raise credentials_exception
 
     return user
+
+
+# --------------------------------------------------------------------------
+# AI Provider
+# --------------------------------------------------------------------------
+
+import logging
+
+logger = logging.getLogger(__name__)
+
+def get_ai_provider() -> AIProvider:
+    """
+    Return the configured AI provider.
+
+    The concrete provider is selected from application settings via the
+    ProviderFactory. Consumers depend only on the AIProvider abstraction.
+    """
+    print("Configured AI provider:", settings.ai_provider)
+
+    return ProviderFactory.create(settings.ai_provider)
+
+# --------------------------------------------------------------------------
+# Dictionary Service
+# --------------------------------------------------------------------------
+
+def get_dictionary_service(
+    provider: AIProvider = Depends(get_ai_provider),
+) -> DictionaryService:
+    """
+    Return a DictionaryService configured with the active AI provider.
+    """
+    return DictionaryService(provider)

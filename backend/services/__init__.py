@@ -1,4 +1,4 @@
-"""Application services."""
+"""Application service layer."""
 
 from .dictionary_service import DictionaryService
 

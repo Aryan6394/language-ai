@@ -4,13 +4,19 @@ Centralized application settings loaded from environment variables.
 This module is the single source of truth for application configuration.
 """
 
+from __future__ import annotations
+
 from functools import lru_cache
 from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from app.providers.types import ProviderType
+
 
 class Settings(BaseSettings):
+    """Application configuration loaded from environment variables."""
+
     model_config = SettingsConfigDict(
         env_file=".env",
         extra="ignore",
@@ -49,6 +55,12 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 30
 
     # ------------------------------------------------------------------
+    # AI
+    # ------------------------------------------------------------------
+
+    ai_provider: ProviderType = ProviderType.MOCK
+
+    # ------------------------------------------------------------------
     # API
     # ------------------------------------------------------------------
 
@@ -63,3 +75,12 @@ class Settings(BaseSettings):
 def get_settings() -> Settings:
     """Return a cached Settings instance."""
     return Settings()
+
+
+settings = get_settings()
+
+__all__ = [
+    "Settings",
+    "get_settings",
+    "settings",
+]

@@ -30,13 +30,18 @@ logger = logging.getLogger(__name__)
 
 
 class DictionaryService:
-    """Orchestrates dictionary lookups using a cache-first strategy."""
+    """Orchestrates dictionary lookups using a cache-first strategy.
+
+    The service is responsible for business logic only. It coordinates
+    CRUD operations and AI lookups but never performs SQL directly or
+    knows about FastAPI routing.
+    """
 
     def __init__(self, provider: AIProvider) -> None:
         """Initialize the service.
 
         Args:
-            provider: AI provider implementation injected by the
+            provider: The AI provider implementation injected by the
                 dependency layer.
         """
         self._provider = provider
@@ -48,23 +53,23 @@ class DictionaryService:
         word: str,
         language: str,
     ) -> DictionaryEntry:
-        """Look up a dictionary entry.
+        """Look up a word using a cache-first strategy.
 
         Flow:
             1. Check the database cache.
             2. Return immediately on cache hit.
-            3. Otherwise query the AI provider.
-            4. Validate the response.
-            5. Save it.
-            6. Return the saved entry.
+            3. Query the AI provider on cache miss.
+            4. Validate the AI response.
+            5. Persist the new entry.
+            6. Return the stored entry.
 
         Args:
-            session: Active AsyncSession.
-            word: Word to search.
+            session: Active database session.
+            word: Word or phrase to look up.
             language: Language code.
 
         Returns:
-            DictionaryEntry ORM model.
+            The matching DictionaryEntry ORM model.
         """
         cached_entry = await crud.get_entry(
             session,
@@ -102,7 +107,22 @@ class DictionaryService:
         word: str,
         language: str,
     ) -> DictionaryEntryData:
-        """Resolve a dictionary entry using the AI provider."""
+        """Resolve a dictionary entry using the configured AI provider.
+
+        Builds the prompt, sends it to the provider, parses the response,
+        and validates it against the DictionaryEntryData schema.
+
+        Args:
+            word: Word or phrase to look up.
+            language: Language code.
+
+        Returns:
+            A validated DictionaryEntryData instance.
+
+        Raises:
+            ValueError: If the provider fails, returns invalid JSON,
+                or returns data that does not match the expected schema.
+        """
         prompt = self._build_prompt(
             word=word,
             language=language,
@@ -113,21 +133,25 @@ class DictionaryService:
         try:
             raw_response = await self._provider.generate(prompt)
 
+            logger.debug(
+                "Raw AI response:\n%s",
+                raw_response,
+            )
+
         except ProviderError as exc:
             logger.exception(
                 "AI provider failed for word=%r language=%r",
                 word,
                 language,
             )
+
             raise ValueError(
                 f"AI provider failed to generate a dictionary entry: {exc}"
             ) from exc
 
-        logger.debug("Raw AI response:\n%s", raw_response)
+        parsed_response = self._parse_response(raw_response)
 
-        parsed = self._parse_response(raw_response)
-
-        return self._validate_response(parsed)
+        return self._validate_response(parsed_response)
 
     @staticmethod
     def _build_prompt(
@@ -137,29 +161,25 @@ class DictionaryService:
     ) -> str:
         """Build the prompt sent to the AI provider."""
 
-        schema = """
-{
-  "word": "...",
-  "language": "...",
-  "readings": [
-    {
-      "script": "...",
-      "reading": "..."
-    }
-  ],
-  "senses": [
-    {
-      "part_of_speech": "...",
-      "definitions": [
-        "..."
-      ],
-      "examples": [
-        "..."
-      ]
-    }
-  ]
-}
-"""
+        schema_description = (
+            "{\n"
+            '  "word": "...",\n'
+            '  "language": "...",\n'
+            '  "readings": [\n'
+            "    {\n"
+            '      "script": "...",\n'
+            '      "reading": "..."\n'
+            "    }\n"
+            "  ],\n"
+            '  "senses": [\n'
+            "    {\n"
+            '      "part_of_speech": "...",\n'
+            '      "definitions": ["..."],\n'
+            '      "examples": ["..."]\n'
+            "    }\n"
+            "  ]\n"
+            "}"
+        )
 
         return (
             "You are a multilingual dictionary.\n\n"
@@ -171,8 +191,8 @@ class DictionaryService:
             "Do NOT include extra keys.\n"
             "If a field is unknown, return an empty array instead of guessing.\n\n"
             "The JSON must exactly match this schema:\n\n"
-            f"{schema}\n"
-            f'Look up the word "{word}" in language "{language}". '
+            f"{schema_description}\n\n"
+            f'Look up the word "{word}" in the language "{language}". '
             'Set "word" to the exact input word and '
             '"language" to the exact input language.'
         )
@@ -181,8 +201,22 @@ class DictionaryService:
     def _parse_response(
         response: str,
     ) -> dict[str, Any]:
-        """Parse the provider response into a JSON object."""
+        """Parse the AI provider response into a JSON object.
 
+        The provider should return plain JSON. If it wraps the JSON in
+        Markdown code fences (for example ```json ... ```), the fences
+        are stripped before parsing.
+
+        Args:
+            response: Raw text returned by the AI provider.
+
+        Returns:
+            Parsed JSON object.
+
+        Raises:
+            ValueError: If the response is not valid JSON or is not a
+                JSON object.
+        """
         response = response.strip()
 
         # Strip Markdown code fences if present.
@@ -205,6 +239,7 @@ class DictionaryService:
                 "AI provider returned invalid JSON: %s",
                 exc,
             )
+
             raise ValueError(
                 f"AI provider returned invalid JSON: {exc}"
             ) from exc
@@ -221,8 +256,17 @@ class DictionaryService:
     def _validate_response(
         data: dict[str, Any],
     ) -> DictionaryEntryData:
-        """Validate parsed JSON against DictionaryEntryData."""
+        """Validate AI response against the dictionary schema.
 
+        Args:
+            data: Parsed JSON object.
+
+        Returns:
+            Validated DictionaryEntryData instance.
+
+        Raises:
+            ValueError: If the response does not conform to the schema.
+        """
         try:
             return DictionaryEntryData.model_validate(data)
 
@@ -231,6 +275,7 @@ class DictionaryService:
                 "AI provider response failed schema validation: %s",
                 exc,
             )
+
             raise ValueError(
                 f"AI provider response failed schema validation: {exc}"
             ) from exc
