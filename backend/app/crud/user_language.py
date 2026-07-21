@@ -4,43 +4,45 @@ CRUD functions for user language enrollment.
 
 import uuid
 
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import joinedload
 
 from app.models.language import Language, UserLanguage
 from app.models.user import User
 from app.schemas.user_language import UserLanguageCreate
 
 
-def get_language_by_id(
-    db: Session,
+async def get_language_by_id(
+    db: AsyncSession,
     language_id: uuid.UUID,
 ) -> Language | None:
     """
     Retrieve a language by its primary key.
     """
-    return db.get(Language, language_id)
+    return await db.get(Language, language_id)
 
 
-def get_user_language(
-    db: Session,
+async def get_user_language(
+    db: AsyncSession,
     user_id: uuid.UUID,
     language_id: uuid.UUID,
 ) -> UserLanguage | None:
     """
     Return an existing enrollment if one exists.
     """
-    return (
-        db.query(UserLanguage)
-        .filter(
+    result = await db.execute(
+        select(UserLanguage).where(
             UserLanguage.user_id == user_id,
             UserLanguage.language_id == language_id,
         )
-        .first()
     )
 
+    return result.scalar_one_or_none()
 
-def create_user_language(
-    db: Session,
+
+async def create_user_language(
+    db: AsyncSession,
     user: User,
     language_data: UserLanguageCreate,
 ) -> UserLanguage:
@@ -55,24 +57,26 @@ def create_user_language(
     )
 
     db.add(enrollment)
-    db.commit()
-    db.refresh(enrollment)
+
+    await db.commit()
+    await db.refresh(enrollment)
 
     return enrollment
 
 
-def get_user_languages(
-    db: Session,
+async def get_user_languages(
+    db: AsyncSession,
     user_id: uuid.UUID,
 ) -> list[UserLanguage]:
     """
     Return all languages the user is enrolled in.
     """
 
-    return (
-        db.query(UserLanguage)
+    result = await db.execute(
+        select(UserLanguage)
         .options(joinedload(UserLanguage.language))
-        .filter(UserLanguage.user_id == user_id)
+        .where(UserLanguage.user_id == user_id)
         .order_by(UserLanguage.started_at)
-        .all()
     )
+
+    return result.scalars().all()

@@ -1,9 +1,11 @@
-from fastapi import APIRouter, Depends
-from sqlalchemy.orm import Session
+from typing import Annotated
 
-from app.crud.language import get_languages
-from app.db.session import get_db
+from fastapi import APIRouter, Depends
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.db.session import get_async_db
 from app.schemas.language import LanguageResponse
+from app.services.language_service import LanguageService
 
 router = APIRouter(
     prefix="/languages",
@@ -16,11 +18,11 @@ router = APIRouter(
     response_model=list[LanguageResponse],
     summary="List supported languages",
 )
-def list_languages(
-    db: Session = Depends(get_db),
-):
+async def list_languages(
+    db: Annotated[AsyncSession, Depends(get_async_db)],
+) -> list[LanguageResponse]:
     """
     Return every active language supported by the platform.
     """
 
-    return get_languages(db)
+    return await LanguageService.get_languages(db)

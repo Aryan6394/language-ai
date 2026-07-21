@@ -2,12 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.crud.user import change_password, update_user
-from app.crud.user_language import (
-    create_user_language,
-    get_language_by_id,
-    get_user_language,
-    get_user_languages,
-)
+from app.services.user_language_service import UserLanguageService
 from app.db.session import get_async_db
 from app.dependencies import get_current_user
 from app.models.user import User
@@ -103,7 +98,7 @@ async def change_current_user_password(
     status_code=status.HTTP_201_CREATED,
     summary="Enroll in a language",
 )
-def enroll_language(
+async def enroll_language(
     language_data: UserLanguageCreate,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_async_db),
@@ -112,34 +107,26 @@ def enroll_language(
     Enroll the authenticated user in a language.
     """
 
-    language = get_language_by_id(
-        db=db,
-        language_id=language_data.language_id,
-    )
-
-    if language is None or not language.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Language not found",
+    try:
+        return await UserLanguageService.enroll_language(
+            db=db,
+            user=current_user,
+            language_data=language_data,
         )
 
-    existing = get_user_language(
-        db=db,
-        user_id=current_user.id,
-        language_id=language_data.language_id,
-    )
+    except ValueError as e:
+        message = str(e)
 
-    if existing:
+        if message == "Language not found.":
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=message,
+            )
+
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Already enrolled in this language",
+            detail=message,
         )
-
-    return create_user_language(
-        db=db,
-        user=current_user,
-        language_data=language_data,
-    )
 
 
 @router.get(
@@ -147,15 +134,15 @@ def enroll_language(
     response_model=list[UserLanguageDetail],
     summary="Get enrolled languages",
 )
-def get_my_languages(
+async def get_my_languages(
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_async_db),
+    db: AsyncSession = Depends(get_async_db),
 ) -> list[UserLanguageDetail]:
     """
     Return all languages the authenticated user is enrolled in.
     """
 
-    return get_user_languages(
+    return await UserLanguageService.get_user_languages(
         db=db,
-        user_id=current_user.id,
+        user=current_user,
     )

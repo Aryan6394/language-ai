@@ -1,10 +1,5 @@
-"""
-Pydantic schemas for user language enrollment.
-"""
-
 import uuid
 from datetime import datetime
-from typing import Optional
 
 from pydantic import BaseModel, ConfigDict
 
@@ -45,7 +40,7 @@ class UserLanguageResponse(BaseModel):
     status: UserLanguageStatus
 
     started_at: datetime
-    cefr_estimate: Optional[str] = None
+    cefr_estimate: str | None = None
 
 
 class UserLanguageDetail(BaseModel):
@@ -57,6 +52,6 @@ class UserLanguageDetail(BaseModel):
     level: UserLanguageLevel
     status: UserLanguageStatus
     started_at: datetime
-    cefr_estimate: Optional[str] = None
+    cefr_estimate: str | None = None
 
     language: LanguageSummary
