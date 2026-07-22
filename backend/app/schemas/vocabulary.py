@@ -16,7 +16,7 @@ Alembic migrations, or tests.
 
 import uuid
 from datetime import datetime
-from typing import List, Optional
+from typing import List
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -34,13 +34,13 @@ class VocabularyEntryBase(BaseModel):
     """
 
     word: str = Field(..., min_length=1, max_length=200, description="The word or phrase, as entered by the user.")
-    meaning: Optional[str] = Field(None, description="Definition/translation, often pulled from vocabulary_cache.")
-    example_sentence: Optional[str] = Field(None, description="An example sentence using the word.")
-    part_of_speech: Optional[str] = Field(
+    meaning: str | None = Field(None, description="Definition/translation, often pulled from vocabulary_cache.")
+    example_sentence: str | None = Field(None, description="An example sentence using the word.")
+    part_of_speech: str | None = Field(
         None, max_length=50, description="Grammatical category, as free text (DATABASE.md does not enum this)."
     )
-    ipa: Optional[str] = Field(None, max_length=200, description="Optional phonetic (IPA) spelling.")
-    tags: Optional[List[str]] = Field(None, description="User-defined categorization tags.")
+    ipa: str | None = Field(None, max_length=200, description="Optional phonetic (IPA) spelling.")
+    tags: List[str] | None = Field(None, description="User-defined categorization tags.")
 
 
 class VocabularyEntryCreate(VocabularyEntryBase):
@@ -66,12 +66,12 @@ class VocabularyEntryUpdate(BaseModel):
     directly through a general edit endpoint.
     """
 
-    word: Optional[str] = Field(None, min_length=1, max_length=200)
-    meaning: Optional[str] = None
-    example_sentence: Optional[str] = None
-    part_of_speech: Optional[str] = Field(None, max_length=50)
-    ipa: Optional[str] = Field(None, max_length=200)
-    tags: Optional[List[str]] = None
+    word: str | None = Field(None, min_length=1, max_length=200)
+    meaning: str | None = None
+    example_sentence: str | None = None
+    part_of_speech: str | None = Field(None, max_length=50)
+    ipa: str | None = Field(None, max_length=200)
+    tags: List[str] | None = None
 
 
 class VocabularyEntryResponse(VocabularyEntryBase):
@@ -89,7 +89,7 @@ class VocabularyEntryResponse(VocabularyEntryBase):
     language_id: uuid.UUID
     date_added: datetime
     srs_stage: int
-    srs_due_at: Optional[datetime] = None
+    srs_due_at: datetime | None = None
 
 
 class VocabularyCacheResponse(BaseModel):
@@ -105,10 +105,10 @@ class VocabularyCacheResponse(BaseModel):
     id: uuid.UUID
     word: str
     language_id: uuid.UUID
-    meaning: Optional[str] = None
-    example_sentence: Optional[str] = None
-    part_of_speech: Optional[str] = None
-    ipa: Optional[str] = None
+    meaning: str | None = None
+    example_sentence: str | None = None
+    part_of_speech: str | None = None
+    ipa: str | None = None
     source: VocabularyCacheSource
     fetched_at: datetime
 

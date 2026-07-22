@@ -21,10 +21,9 @@ Improved:
 import re
 import uuid
 from datetime import datetime, timedelta, timezone
-from typing import Optional
 
-from sqlalchemy import or_
-from sqlalchemy.orm import Session
+from sqlalchemy import or_, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.vocabulary import (
     VocabularyCache,
@@ -87,8 +86,8 @@ def _update_srs(entry: VocabularyEntry, was_correct: bool) -> None:
 # ---------------------------------------------------------------------------
 
 
-def create_vocabulary_entry(
-    db: Session,
+async def create_vocabulary_entry(
+    db: AsyncSession,
     user_id: uuid.UUID,
     schema: VocabularyEntryCreate,
 ) -> VocabularyEntry:
@@ -109,20 +108,19 @@ def create_vocabulary_entry(
     normalized = _normalize_word(schema.word)
 
     # Duplicate guard — same user + language + normalized word.
-    existing = (
-        db.query(VocabularyEntry)
-        .filter(
+    existing_result = await db.execute(
+        select(VocabularyEntry).where(
             VocabularyEntry.user_id == user_id,
             VocabularyEntry.language_id == schema.language_id,
             VocabularyEntry.word == normalized,
         )
-        .first()
     )
+    existing = existing_result.scalar_one_or_none()
     if existing is not None:
         raise ValueError("Vocabulary entry already exists for this language.")
 
     # Cache-first resolution: fill gaps from the shared cache.
-    cached = get_cached_vocabulary(db, normalized, schema.language_id)
+    cached = await get_cached_vocabulary(db, normalized, schema.language_id)
 
     meaning = schema.meaning
     example_sentence = schema.example_sentence
@@ -152,43 +150,42 @@ def create_vocabulary_entry(
 
     try:
         db.add(entry)
-        db.commit()
-        db.refresh(entry)
+        await db.commit()
+        await db.refresh(entry)
     except Exception:
-        db.rollback()
+        await db.rollback()
         raise
 
     return entry
 
 
-def get_vocabulary_entry_by_id(
-    db: Session,
+async def get_vocabulary_entry_by_id(
+    db: AsyncSession,
     entry_id: uuid.UUID,
     user_id: uuid.UUID,
-) -> Optional[VocabularyEntry]:
+) -> VocabularyEntry | None:
     """Retrieve a single vocabulary entry by primary key.
 
     Returns ``None`` if no entry exists or if the entry does not belong
     to *user_id* — callers never see another user's data.
     """
 
-    return (
-        db.query(VocabularyEntry)
-        .filter(
+    result = await db.execute(
+        select(VocabularyEntry).where(
             VocabularyEntry.id == entry_id,
             VocabularyEntry.user_id == user_id,
         )
-        .first()
     )
+    return result.scalar_one_or_none()
 
 
-def get_user_vocabulary(
-    db: Session,
+async def get_user_vocabulary(
+    db: AsyncSession,
     user_id: uuid.UUID,
-    language_id: Optional[uuid.UUID] = None,
+    language_id: uuid.UUID | None = None,
     page: int = 1,
     page_size: int = 20,
-    search: Optional[str] = None,
+    search: str | None = None,
 ) -> list[VocabularyEntry]:
     """Return a paginated slice of the user's vocabulary list.
 
@@ -206,32 +203,31 @@ def get_user_vocabulary(
     page = max(1, page)
     page_size = max(1, page_size)
 
-    query = db.query(VocabularyEntry).filter(
+    query = select(VocabularyEntry).where(
         VocabularyEntry.user_id == user_id,
     )
 
     if language_id is not None:
-        query = query.filter(VocabularyEntry.language_id == language_id)
+        query = query.where(VocabularyEntry.language_id == language_id)
 
     if search is not None and search.strip():
-        query = query.filter(VocabularyEntry.word.ilike(f"%{search.strip()}%"))
+        query = query.where(VocabularyEntry.word.ilike(f"%{search.strip()}%"))
 
-    offset = (page - 1) * page_size
-
-    return (
-        query
-        .order_by(VocabularyEntry.date_added.desc())
-        .offset(offset)
+    query = (
+        query.order_by(VocabularyEntry.date_added.desc())
+        .offset((page - 1) * page_size)
         .limit(page_size)
-        .all()
     )
 
+    result = await db.execute(query)
+    return result.scalars().all()
 
-def search_vocabulary(
-    db: Session,
+
+async def search_vocabulary(
+    db: AsyncSession,
     user_id: uuid.UUID,
     query: str,
-    language_id: Optional[uuid.UUID] = None,
+    language_id: uuid.UUID | None = None,
     page: int = 1,
     page_size: int = 20,
 ) -> list[VocabularyEntry]:
@@ -244,13 +240,13 @@ def search_vocabulary(
     page = max(1, page)
     page_size = max(1, page_size)
 
-    stmt = db.query(VocabularyEntry).filter(
+    stmt = select(VocabularyEntry).where(
         VocabularyEntry.user_id == user_id,
     )
 
     if query is not None and query.strip():
         term = f"%{query.strip()}%"
-        stmt = stmt.filter(
+        stmt = stmt.where(
             or_(
                 VocabularyEntry.word.ilike(term),
                 VocabularyEntry.meaning.ilike(term),
@@ -259,21 +255,20 @@ def search_vocabulary(
         )
 
     if language_id is not None:
-        stmt = stmt.filter(VocabularyEntry.language_id == language_id)
+        stmt = stmt.where(VocabularyEntry.language_id == language_id)
 
-    offset = (page - 1) * page_size
-
-    return (
-        stmt
-        .order_by(VocabularyEntry.date_added.desc())
-        .offset(offset)
+    stmt = (
+        stmt.order_by(VocabularyEntry.date_added.desc())
+        .offset((page - 1) * page_size)
         .limit(page_size)
-        .all()
     )
 
+    result = await db.execute(stmt)
+    return result.scalars().all()
 
-def update_vocabulary_entry(
-    db: Session,
+
+async def update_vocabulary_entry(
+    db: AsyncSession,
     entry: VocabularyEntry,
     schema: VocabularyEntryUpdate,
 ) -> VocabularyEntry:
@@ -290,16 +285,15 @@ def update_vocabulary_entry(
     # If the word is being changed, check for duplicates.
     if "word" in update_data and update_data["word"] is not None:
         normalized_word = _normalize_word(update_data["word"])
-        duplicate = (
-            db.query(VocabularyEntry)
-            .filter(
+        duplicate_result = await db.execute(
+            select(VocabularyEntry).where(
                 VocabularyEntry.user_id == entry.user_id,
                 VocabularyEntry.language_id == entry.language_id,
                 VocabularyEntry.word == normalized_word,
                 VocabularyEntry.id != entry.id,
             )
-            .first()
         )
+        duplicate = duplicate_result.scalar_one_or_none()
         if duplicate is not None:
             raise ValueError("Vocabulary entry already exists for this language.")
 
@@ -312,16 +306,16 @@ def update_vocabulary_entry(
 
     try:
         db.add(entry)
-        db.commit()
-        db.refresh(entry)
+        await db.commit()
+        await db.refresh(entry)
     except Exception:
-        db.rollback()
+        await db.rollback()
         raise
 
     return entry
 
 
-def delete_vocabulary_entry(db: Session, entry: VocabularyEntry) -> None:
+async def delete_vocabulary_entry(db: AsyncSession, entry: VocabularyEntry) -> None:
     """Delete a vocabulary entry and commit the transaction.
 
     Related ``vocabulary_review_log`` rows are removed automatically
@@ -330,10 +324,10 @@ def delete_vocabulary_entry(db: Session, entry: VocabularyEntry) -> None:
     """
 
     try:
-        db.delete(entry)
-        db.commit()
+        await db.delete(entry)
+        await db.commit()
     except Exception:
-        db.rollback()
+        await db.rollback()
         raise
 
 
@@ -342,8 +336,8 @@ def delete_vocabulary_entry(db: Session, entry: VocabularyEntry) -> None:
 # ---------------------------------------------------------------------------
 
 
-def create_review_log(
-    db: Session,
+async def create_review_log(
+    db: AsyncSession,
     entry: VocabularyEntry,
     user_id: uuid.UUID,
     was_correct: bool,
@@ -372,18 +366,18 @@ def create_review_log(
     try:
         db.add(log)
         db.add(entry)
-        db.commit()
-        db.refresh(log)
-        db.refresh(entry)
+        await db.commit()
+        await db.refresh(log)
+        await db.refresh(entry)
     except Exception:
-        db.rollback()
+        await db.rollback()
         raise
 
     return log
 
 
-def get_due_vocabulary(
-    db: Session,
+async def get_due_vocabulary(
+    db: AsyncSession,
     user_id: uuid.UUID,
     limit: int = 50,
 ) -> list[VocabularyEntry]:
@@ -396,16 +390,16 @@ def get_due_vocabulary(
 
     now = datetime.now(timezone.utc)
 
-    return (
-        db.query(VocabularyEntry)
-        .filter(
+    result = await db.execute(
+        select(VocabularyEntry)
+        .where(
             VocabularyEntry.user_id == user_id,
             VocabularyEntry.srs_due_at <= now,
         )
         .order_by(VocabularyEntry.srs_due_at.asc())
         .limit(limit)
-        .all()
     )
+    return result.scalars().all()
 
 
 # ---------------------------------------------------------------------------
@@ -413,11 +407,11 @@ def get_due_vocabulary(
 # ---------------------------------------------------------------------------
 
 
-def get_cached_vocabulary(
-    db: Session,
+async def get_cached_vocabulary(
+    db: AsyncSession,
     word: str,
     language_id: uuid.UUID,
-) -> Optional[VocabularyCache]:
+) -> VocabularyCache | None:
     """Look up a shared cache entry by normalized word and language.
 
     The word is normalized before the lookup to stay consistent with the
@@ -426,18 +420,17 @@ def get_cached_vocabulary(
 
     normalized = _normalize_word(word)
 
-    return (
-        db.query(VocabularyCache)
-        .filter(
+    result = await db.execute(
+        select(VocabularyCache).where(
             VocabularyCache.word == normalized,
             VocabularyCache.language_id == language_id,
         )
-        .first()
     )
+    return result.scalar_one_or_none()
 
 
-def create_cache_entry(
-    db: Session,
+async def create_cache_entry(
+    db: AsyncSession,
     data: VocabularyCache,
 ) -> VocabularyCache:
     """Insert a new row into the shared vocabulary cache.
@@ -449,10 +442,10 @@ def create_cache_entry(
 
     try:
         db.add(data)
-        db.commit()
-        db.refresh(data)
+        await db.commit()
+        await db.refresh(data)
     except Exception:
-        db.rollback()
+        await db.rollback()
         raise
 
     return data

@@ -23,6 +23,8 @@ from app.routers.dictionary import router as dictionary_router
 from app.routers.languages import router as language_router
 from app.routers.users import router as user_router
 from app.routers.vocabulary import router as vocabulary_router
+from app.routers import vocabulary
+app.include_router(vocabulary.router)
 # --------------------------------------------------------------------------
 # Settings
 # --------------------------------------------------------------------------
