@@ -18,39 +18,21 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import get_settings
+
 from app.routers.auth import router as auth_router
 from app.routers.dictionary import router as dictionary_router
 from app.routers.languages import router as language_router
 from app.routers.users import router as user_router
 from app.routers.vocabulary import router as vocabulary_router
-from app.routers import vocabulary
-app.include_router(vocabulary.router)
-# --------------------------------------------------------------------------
-# Settings
-# --------------------------------------------------------------------------
-# Load the cached Settings instance once at import time. This is the single
-# source of truth for app identity (name/version) and CORS configuration —
-# see app/core/config.py for what each field means.
+from app.routers.review import router as review_router
+
 settings = get_settings()
 
-# --------------------------------------------------------------------------
-# App instance
-# --------------------------------------------------------------------------
-# The FastAPI app is created with its title and version pulled from
-# Settings rather than hardcoded, so they can change per environment
-# (e.g. via .env) without touching this file. Title/version show up in
-# the auto-generated docs at /docs and /redoc.
-app = FastAPI(title=settings.app_name, version=settings.app_version)
+app = FastAPI(
+    title="LinguaAI API",
+    version="1.0.0",
+)
 
-# --------------------------------------------------------------------------
-# CORS middleware
-# --------------------------------------------------------------------------
-# Allows browser-based frontend clients running on an allowed origin to
-# call this API. `allowed_origins` comes from Settings so it can be
-# tightened per environment (e.g. a real domain in production) without
-# code changes. allow_methods/allow_headers are left open ("*") at this
-# foundation stage; if that needs tightening later, it belongs to
-# whichever domain motivates the restriction, not this entry point.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.allowed_origins,
@@ -59,18 +41,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# --------------------------------------------------------------------------
-# Routers
-# --------------------------------------------------------------------------
-# Only the auth router is mounted, and only its /register endpoint exists
-# right now (see app/router/auth.py). Mounting is required here — an
-# unmounted router would leave /auth/register unreachable, defeating the
-# point of this task. No other routers (e.g. vocabulary) are included.
+# Register routers
 app.include_router(auth_router)
 app.include_router(user_router)
 app.include_router(language_router)
-app.include_router(vocabulary_router)
 app.include_router(dictionary_router)
+app.include_router(vocabulary_router)
+app.include_router(review_router)
 # --------------------------------------------------------------------------
 # Health check
 # --------------------------------------------------------------------------

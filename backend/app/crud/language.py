@@ -2,6 +2,8 @@
 CRUD functions for the Language model.
 """
 
+from uuid import UUID
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -22,3 +24,21 @@ async def get_languages(
     )
 
     return result.scalars().all()
+
+
+async def get_language_by_id(
+    db: AsyncSession,
+    language_id: UUID,
+) -> Language | None:
+    """
+    Return a language by its ID if it exists and is active.
+    """
+
+    result = await db.execute(
+        select(Language).where(
+            Language.id == language_id,
+            Language.is_active.is_(True),
+        )
+    )
+
+    return result.scalar_one_or_none()

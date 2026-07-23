@@ -6,7 +6,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.session import get_db
+from app.db.session import get_async_db
 from app.dependencies import get_current_user
 from app.models.user import User
 from app.schemas.vocabulary import (
@@ -21,7 +21,7 @@ router = APIRouter(
     tags=["Vocabulary"],
 )
 
-DBSession = Annotated[AsyncSession, Depends(get_db)]
+DBSession = Annotated[AsyncSession, Depends(get_async_db)]
 CurrentUser = Annotated[User, Depends(get_current_user)]
 
 
